@@ -29,3 +29,7 @@ void arp_out(buf_t *buf, uint8_t *ip);
 void arp_req(uint8_t *target_ip);
 void arp_resp(uint8_t *target_ip, uint8_t *target_mac);
 #endif
+
+// 注意到，其他协议的定义的都是头，arp定义的不是头，而是直接是arp_pkt_t,为什么？
+// 因为对arp而言，它自己就是最高层，ARP 报文在向数据链路层传输时无需经过 IP 协议的封装，而是直接生成包含 ARP 报头的报文。
+// arp协议直接生成整个报文，它会被以太网协议封装加头。

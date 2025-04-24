@@ -13,8 +13,9 @@
 #else
 #define NET_IF_IP        \
     {                    \
-        XX, XX, XX, XX \
-    }  // 自定义网卡ip地址
+        10, 250, 217, 100 \
+    }  // 自定义网卡ip地址   10.250.217.35/16 // 我的 主机ip
+   
 #define NET_IF_MAC                         \
     {                                      \
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55 \

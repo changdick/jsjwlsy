@@ -7,6 +7,7 @@
 
 #pragma pack(1)
 
+// 长度为 14 Bytes （6+6+2）
 typedef struct ether_hdr {
     uint8_t dst[NET_MAC_LEN];  // 目标mac地址
     uint8_t src[NET_MAC_LEN];  // 源mac地址
