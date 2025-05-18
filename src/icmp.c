@@ -27,7 +27,7 @@ static void icmp_resp(buf_t *req_buf, uint8_t *src_ip) {
     memcpy(txbuf.data + sizeof(icmp_hdr_t), req_buf->data + sizeof(icmp_hdr_t), req_buf->len - sizeof(icmp_hdr_t));
 
     // icmp 校验和是全部的校验和
-    uint16_t checksum = checksum16(txbuf.data, txbuf.len);  // 计算校验和
+    uint16_t checksum = checksum16((uint16_t*)txbuf.data, txbuf.len);  // 计算校验和
 
     icmp_header->checksum16 = checksum;  // 设置校验和
 
@@ -55,9 +55,9 @@ void icmp_in(buf_t *buf, uint8_t *src_ip) {
     uint8_t code = icmp_header->code;
 
     // 看是不是回显
-    if (type == ICMP_TYPE_ECHO_REQUEST)
+    if (type == ICMP_TYPE_ECHO_REQUEST && code == 0) {
         icmp_resp(buf, src_ip);  // 回显请求，发送响应
-    
+    }
 }
 
 /**
@@ -70,7 +70,7 @@ void icmp_in(buf_t *buf, uint8_t *src_ip) {
 void icmp_unreachable(buf_t *recv_buf, uint8_t *src_ip, icmp_code_t code) {
     // TO-DO
     // 初始化buf 这是个icmp包
-    buf_init(&txbuf, sizeof(icmp_hdr_t) + 28);   // 按理说是 icmp头 加上 ip数据包的头和8字节数据部分，这边直接用28了
+    buf_init(&txbuf, sizeof(icmp_hdr_t) + sizeof(ip_hdr_t) + 8);   // 按理说是 icmp头 加上 ip数据包的头和8字节数据部分，这边直接用28了
 
     icmp_hdr_t * icmp_header = (icmp_hdr_t*)txbuf.data;
 
@@ -85,10 +85,10 @@ void icmp_unreachable(buf_t *recv_buf, uint8_t *src_ip, icmp_code_t code) {
     // memset(&(icmp_header->seq16), 0, 1); // 数字签名，应该不会有人像我这样写吧
     icmp_header->seq16 = 0; // seq
 
-    memcpy(txbuf.data + sizeof(icmp_hdr_t), recv_buf->data, 28); // 直接拷贝数据部分
+    memcpy(txbuf.data + sizeof(icmp_hdr_t), recv_buf->data, sizeof(ip_hdr_t) + 8); // 直接拷贝数据部分
 
     // icmp 校验和是全部的校验和
-    uint16_t checksum = checksum16(txbuf.data, txbuf.len);  // 计算校验和
+    uint16_t checksum = checksum16((uint16_t *)txbuf.data, txbuf.len);  // 计算校验和
 
     icmp_header->checksum16 = checksum;  // 设置校验和
 

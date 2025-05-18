@@ -20,6 +20,7 @@ void ip_in(buf_t *buf, uint8_t *src_mac) {
     // 报头检查
     // 仿照之前实验，要操纵ip报头来检查，需要申请一个IP头类型的指针，用这个指针类型来解析buf的data段。其实buf->data就是一个指针，但是没有准确的类型
     ip_hdr_t * ip_header = (ip_hdr_t *)buf->data;
+    uint16_t ip_hdr_len = ip_header->hdr_len * IP_HDR_LEN_PER_BYTE;
     // ip报头内容检查
     // 包括： 版本号是否为IPv4，总长度字段是否相遇等于数据包长度
     if (ip_header->version == IP_VERSION_4 && swap16(ip_header->total_len16) <= buf->len) {
@@ -55,9 +56,11 @@ void ip_in(buf_t *buf, uint8_t *src_mac) {
         // 去掉报头
         buf_remove_header(buf, sizeof(ip_hdr_t));  // 去除ip头部
 
-        int netinret = net_in(buf, ip_header->protocol, src_mac);  // 调用net_in函数处理上层协议  // 为什么第三个参数是src_mac? 
+        int netinret = net_in(buf, ip_header->protocol, ip_header->src_ip);  // 调用net_in函数处理上层协议  // 为什么第三个参数是src_mac? 
         if(netinret == -1) {
             // 如果没有处理程序，丢弃
+            
+            buf_add_header(buf, sizeof(ip_hdr_t));
             icmp_unreachable(buf, ip_header->src_ip, ICMP_CODE_PROTOCOL_UNREACH);  // 发送不可达
         }
             

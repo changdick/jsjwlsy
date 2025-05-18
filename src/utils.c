@@ -70,21 +70,27 @@ uint8_t ip_prefix_match(uint8_t *ipa, uint8_t *ipb) {
  * @return uint16_t 校验和
  */
 uint16_t checksum16(uint16_t *data, size_t len) {
-    // TO-DO
-    uint32_t sum = 0;
+       uint32_t sum = 0;
+    uint16_t word;
 
-    while (len > 0) {
-        sum += *data++;
+    while (len > 1) {
+        memcpy(&word, data, 2);  // 安全地从 data 读两个字节
+        sum += word;
+        data = (uint16_t *)((uint8_t *)data + 2);  // 移动两个字节
         len -= 2;
     }
 
-    // 将高16位和低16位相加
+    if (len == 1) {
+        uint8_t last_byte = *(uint8_t *)data;
+        sum += last_byte << 8;  // 最后一个字节左移，高位对齐
+    }
+
+    // 折叠进位
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
 
-    // 取反得到校验和
-    return ~sum;  // 自己会截断
+    return ~sum;
 }
 
 #pragma pack(1)
@@ -108,4 +114,33 @@ typedef struct peso_hdr {
  */
 uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip) {
     // TO-DO
+    // 这边读入的是已经把首部校验和置为0的数据包
+    if (protocol == NET_PROTOCOL_UDP) {
+        int padflag = 0;
+        if(buf->len % 2) {
+            buf_add_padding(buf, 1);  // 如果buf的长度是奇数，补齐为偶数
+            padflag++;
+        }
+        // 计算udp校验和
+        // 为了加入伪头部，可以申请一个临时缓冲，把buf里的数据拷出来，再填写伪头部字段计算
+        uint8_t temp[12 + buf->len]; 
+        
+        memcpy(temp + 12, buf->data, buf->len);  // 先把数据包拷贝到临时缓冲区
+        // 伪头部的结构: | 4B src ip | 4B dest ip |0 1B|protocol 1B |UDP长度 2B|
+        
+        memcpy(temp, src_ip, 4);  // 拷贝源ip
+        memcpy(temp + 4, dst_ip, 4);  // 拷贝目的ip
+        memset(temp + 8, 0, 1);  // 填充一个字节为0
+        temp[9] = protocol;  // 填充协议号
+        memcpy(temp + 10, temp+16, 2);  // 填充udp长度  temp+16就是长度字段
+
+        // 计算校验和
+        uint16_t jyh = checksum16((uint16_t *)temp, 12 + buf->len);  // 计算校验和
+        if(padflag) {
+            buf_remove_padding(buf, 1);
+
+        }
+        return jyh;
+    }
+    
 }

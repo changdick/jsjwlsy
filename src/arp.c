@@ -130,7 +130,8 @@ void arp_in(buf_t *buf, uint8_t *src_mac) {
                 if(arp_pkt->pro_len == arp_init_pkt.pro_len)  //IP 协议地址长度
                     if(arp_pkt->opcode16 == swap16(0x1) || arp_pkt->opcode16 == swap16(2)) {
                         // 所有检查通过
-                        map_set(&arp_table, arp_pkt->sender_ip, arp_pkt->sender_mac);  // 设置arp表
+                        // map_set(&arp_table, arp_pkt->sender_ip, arp_pkt->sender_mac);  // 设置arp表
+                        map_set(&arp_table, arp_pkt->sender_ip, src_mac);
                         //调用 map_get() 函数查看该接收报文的 IP 地址是否有对应的 arp_buf 缓存。
                         buf_t* buf = map_get(&arp_buf, arp_pkt->sender_ip);
                         if (buf) {
@@ -143,7 +144,8 @@ void arp_in(buf_t *buf, uint8_t *src_mac) {
 
                             // 注意！！！这里比较两个ip地址相等，得用memcmp函数，原本写 == 的比较方法调试半天
                             if (arp_pkt->opcode16 == swap16(ARP_REQUEST) && memcmp(arp_pkt->target_ip, arp_init_pkt.sender_ip, NET_IP_LEN) == 0) {
-                                arp_resp(arp_pkt->sender_ip, arp_pkt->sender_mac);  // 如果是请求本机的，发送响应
+                                // arp_resp(arp_pkt->sender_ip, arp_pkt->sender_mac);  // 如果是请求本机的，发送响应
+                                arp_resp(arp_pkt->sender_ip, src_mac); 
                             }
 
                         }
