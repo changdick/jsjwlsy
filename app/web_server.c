@@ -97,7 +97,7 @@ void http_respond(tcp_conn_t *tcp_conn, char *url_path, uint16_t port, uint8_t *
     size_t content_length = ftell(file);
     fseek(file, 0, SEEK_SET);
     // TODO: 发送 HTTP 内容长度
-
+    
 
     // TODO: 发送 HTTP 响应头与响应体的分隔符
 

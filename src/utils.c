@@ -141,6 +141,44 @@ uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8
 
         }
         return jyh;
+    } else if (protocol == NET_PROTOCOL_TCP) {
+        int padflag = 0;
+        // 1. 处理TCP头部长度和数据填充
+        // 获取TCP头部长度（HLEN，高4位，单位为4字节）
+        uint8_t hlen = (buf->data[12] >> 4) & 0x0F;  // TCP头部前16字节中的第13字节高4位
+        uint16_t tcp_total_len = buf->len;  // 总长度 可以直接从buf的len得到
+
+        // 2. 确保总长度为偶数（头部+数据）
+        if (tcp_total_len % 2) {
+            buf_add_padding(buf, 1);  // 填充1字节0
+            padflag++;
+        }
+
+        // 3. 构造临时缓冲区（伪头部 + TCP头部 + 数据）
+        uint16_t temp_len = 12 + tcp_total_len;  // 伪头部12字节 + TCP总长度
+        uint8_t temp[temp_len];
+
+        // 4. 填充伪头部
+        memcpy(temp, src_ip, 4);          // 源IP
+        memcpy(temp + 4, dst_ip, 4);      // 目的IP
+        memset(temp + 8, 0, 1);           // 保留字节置0
+        temp[9] = protocol;               // 协议号（TCP=6）
+        // 填充TCP总长度（注意：需转换为网络字节序，若原buf中长度为网络序则直接拷贝）
+        uint16_t tcp_len_net = swap16(tcp_total_len);   // 这个数据因为tcp头部不存，从buf->len获得，就需要转字节序
+        memcpy(temp + 10, &tcp_len_net, 2);           // 填充到伪头部最后2字节
+
+        // 5. 填充TCP头部和数据（头部已置0校验和，需确保校验和字段为0）
+        memcpy(temp + 12, buf->data, tcp_total_len);  // 拷贝头部（含置0的校验和）和数据
+
+        // 6. 计算校验和
+        uint16_t jyh = checksum16((uint16_t *)temp, temp_len);
+
+        // 7. 移除填充（若有）
+        if (padflag) {
+            buf_remove_padding(buf, 1);
+        }
+
+        return jyh;
     }
     
 }

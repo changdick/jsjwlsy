@@ -118,6 +118,23 @@ static inline void tcp_close_connection(uint8_t remote_ip[NET_IP_LEN], uint16_t 
 void tcp_out(tcp_conn_t *tcp_conn, buf_t *buf, uint16_t src_port, uint8_t *dst_ip, uint16_t dst_port, uint8_t flags) {
     /* =============================== TODO 1 BEGIN =============================== */
 
+    buf_add_header(buf, sizeof(tcp_hdr_t));  // 添加tcp报头
+    // 填 充 TCP 首部字段
+    tcp_hdr_t * tcp_header = (tcp_hdr_t *)buf->data;
+    tcp_header->src_port16 = swap16(src_port);  // 源端口号
+    tcp_header->dst_port16 = swap16(dst_port);
+    tcp_header->win = swap16(TCP_MAX_WINDOW_SIZE);
+    tcp_header->uptr = 0;
+    tcp_header->doff = (sizeof(tcp_hdr_t) / 4) << 4;
+    tcp_header->seq = swap32(tcp_conn->seq);    // tcp报头的seq和ack值应该是和tcp_conn这个有关，但不确定是不是这样关联
+    tcp_header->ack = swap32(tcp_conn->ack);   // 这边需要字节序转换
+    tcp_header->flags = flags;  // flags肯定不是我们构造tcp报头的时候能知道的，肯定要上层提供
+    // checksum need to set
+    tcp_header->checksum16 = 0;
+    uint16_t jiaoyanhe =  transport_checksum(NET_PROTOCOL_TCP, buf, net_if_ip, dst_ip);  // 计算校验和
+    tcp_header->checksum16 = jiaoyanhe;
+
+    ip_out(buf, dst_ip, NET_PROTOCOL_TCP);  // 调用ip_out函数发送数据包
     /* =============================== TODO 1 END =============================== */
 }
 
@@ -153,7 +170,7 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
         return;
     }
 
-    uint32_t remote_seq = swap32(hdr->seq);
+    uint32_t remote_seq = swap32(hdr->seq);  // 注意，头部的seq和这边是换了字节序的
     uint32_t tcp_hdr_sz = (hdr->doff >> 4) * 4;
 
     /* =============================== TODO 2 BEGIN =============================== */
@@ -161,26 +178,35 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
 
     uint8_t send_flags = 0;  // 回复报文的标志位字段
 
+    size_t data_len = 0;
      // 根据当前 TCP 连接的状态进行不同的处理    
     switch (tcp_conn->state) {
         case TCP_STATE_LISTEN:
             // TODO: 仅在收到连接报文时（SYN报文）才做出处理，否则直接返回
-
+            if (!TCP_FLG_ISSET(recv_flags, TCP_FLG_SYN))
+                return;
             // TODO: 初始化 TCP 连接上下文（tcp_conn结构体）的seq字段
-
+            tcp_conn->seq = 0;
             // TODO: 填写 TCP 连接上下文（tcp_conn结构体）的ack字段
-
+            // tcp_conn->ack = remote_seq + 1;
+            // tcp_conn->ack = remote_seq + bytes_in_flight(buf->len - tcp_hdr_sz, recv_flags);
             // TODO: 填写回复标志 send_flags
+            send_flags = TCP_FLG_SYN | TCP_FLG_ACK;  // 回复 SYN-ACK 报文
+            tcp_conn->ack = remote_seq + 1;
 
             // TODO: 进行状态转移
-
+            tcp_conn->state = TCP_STATE_SYN_RECEIVED;
             break;
 
         case TCP_STATE_SYN_RECEIVED:
             // TODO: 仅在收到确认报文时（ACK报文）才做出处理，否则直接返回
-
-            // TODO: 进行状态转移
-
+            if (!TCP_FLG_ISSET(recv_flags, TCP_FLG_ACK))
+                return;
+            // TODO: 进行状态转移    // 经过调试，这里的ack从第三个报文开始影响 但是从第三个开始ack全是1.可能是进入了 ESTABLISHED 状态后出了问题？
+            // tcp_conn->ack  =  tcp_conn->ack + bytes_in_flight(buf->len - tcp_hdr_sz, recv_flags);
+            tcp_conn->ack += 1;
+            tcp_conn->state = TCP_STATE_ESTABLISHED;
+            
             break;
 
         case TCP_STATE_ESTABLISHED:
@@ -188,20 +214,36 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
             if (remote_seq != tcp_conn->ack) {
                 buf_init(&txbuf, 0);
                 tcp_out(tcp_conn, &txbuf, host_port, remote_ip, remote_port, TCP_FLG_ACK);
+                
                 return;
             }
             // TODO: 计算接收到的数据长度，更新 ACK
-
-            // TODO: 如果接收报文携带数据，则填写回复标志 send_flags 发送ACK
+            data_len = buf->len - tcp_hdr_sz;  // 数据长度为总长度减去 TCP 头部长度
+            tcp_conn->ack += bytes_in_flight(data_len, recv_flags);  // 更新 ACK 为接收到的序列号加上数据长度
+            // tcp_conn->ack++;
+            // tcp_conn->ack += bytes_in_flight(buf->len - tcp_hdr_sz, recv_flags);
+            
+            // TODO: 如果接收报文携带数据，则填写回复标志 send_flags 发送ACK // 应该注意是判断一下是否携带数据
+            if (buf->len > tcp_hdr_sz)
+                send_flags = TCP_FLG_ACK;
+            // buf_init(&txbuf, 0);
+            // tcp_out(tcp_conn, &txbuf, host_port, remote_ip, remote_port, send_flags);
 
             // TODO: 如果收到 FIN 报文，则增加 send_flags 相应标志位，并且进行状态转移
-
+            if (TCP_FLG_ISSET(recv_flags, TCP_FLG_FIN)) {
+                send_flags = TCP_FLG_ACK | TCP_FLG_FIN;
+                tcp_conn->state = TCP_STATE_LAST_ACK;  // 状态转移到 CLOSE WAIT(和LST ACK合并成一个状态)
+            }
             break;
 
         case TCP_STATE_LAST_ACK:
             // TODO: 仅在收到确认报文时（ACK报文）才做出处理，否则直接返回
+            if (!TCP_FLG_ISSET(recv_flags, TCP_FLG_ACK))
+                return;
+            
 
             // TODO: 关闭 TCP 连接
+            tcp_close_connection(remote_ip, remote_port, host_port);
 
             break;
 
@@ -211,14 +253,26 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
     }
 
     /* Step2 ：如果接收报文携带数据，则将数据部分交付给上层应用 */
+    // 这里应该判断报文携带数据没有
     // TODO
-
+    if (buf->len > tcp_hdr_sz) {
+        tcp_handler_t *handler =  map_get(&tcp_handler_table, &host_port);
+        if (handler) {
+            buf_remove_header(buf , tcp_hdr_sz);
+            (*handler)(tcp_conn, buf->data, buf->len, remote_ip, remote_port);          // 应用层在这边完成了操作，可能顺带回了，如果回了，会设置叫传输层不要回空ack
+            
+        } else {
+            buf_add_header(buf,  tcp_hdr_sz);
+            icmp_unreachable(buf, src_ip, ICMP_CODE_PORT_UNREACH);  // 发送不可达
+        }
+    }
+    
 
     /* Step3 ：调用tcp_out()发送回复报文，更新TCP连接序列号。 */
     // 如果无需回复，则接收逻辑结束
     if (send_flags == 0)
         return;
-    // 如果 send_flags 只标识了 ACK 字段，并且应用程序已通过 tcp_send() 发送顺带 ACK，则无需再进行回复
+    // 如果 send_flags 只标识了 ACK 字段，并且应用程序已通过 tcp_send() 发送顺带 ACK，则无需再进行回复    “应用程序 ”是应用层的
     if (bytes_in_flight(0, send_flags) == 0 && tcp_conn->not_send_empty_ack) {
         assert(TCP_FLG_ISSET(send_flags, TCP_FLG_ACK));
         tcp_conn->not_send_empty_ack = 0;
@@ -226,8 +280,17 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
     }
 
     // TODO:  初始化一个新的缓冲区，发送回复报文
+    
+    static buf_t tx_buf;
+    buf_init(&tx_buf, 0);
+    // tcp_conn->seq += bytes_in_flight(0, send_flags);  // 更新序列号为当前发送的包的长度减去 TCP 头部长度
+    tcp_out(tcp_conn, &tx_buf, host_port, remote_ip, remote_port, send_flags);  // 发送回复报文
+
 
     // TODO: 更新序列号
+    // 大概率是bytes_in_flight(0, send_flags)
+    tcp_conn->seq += bytes_in_flight(0, send_flags);  // 更新序列号为当前发送的包的长度减去 TCP 头部长度
+
 
     /* =============================== TODO 2 END =============================== */
 }
