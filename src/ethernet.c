@@ -38,7 +38,6 @@ void ethernet_out(buf_t *buf, const uint8_t *mac, net_protocol_t protocol) {
     if (buf->len < ETHERNET_MIN_TRANSPORT_UNIT) {
         buf_add_padding(buf, ETHERNET_MIN_TRANSPORT_UNIT - buf->len);
     }
-
     // 添加以太网包头
     buf_add_header(buf, sizeof(ether_hdr_t));
     ether_hdr_t *hdr = (ether_hdr_t *)buf->data;     // 申请一个指针，hdr，hdr的值是把buf->data这个指针转类型赋值的。这个hdr其实就是用(ether_hdr_t *) 来解读buf->data这个指针。使得buf->data所指的这接下来14B空间，可以通过hdr来操控。

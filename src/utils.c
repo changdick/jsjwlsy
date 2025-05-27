@@ -145,7 +145,7 @@ uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8
         int padflag = 0;
         // 1. 处理TCP头部长度和数据填充
         // 获取TCP头部长度（HLEN，高4位，单位为4字节）
-        uint8_t hlen = (buf->data[12] >> 4) & 0x0F;  // TCP头部前16字节中的第13字节高4位
+        // uint8_t hlen = (buf->data[12] >> 4) & 0x0F;  // TCP头部前16字节中的第13字节高4位
         uint16_t tcp_total_len = buf->len;  // 总长度 可以直接从buf的len得到
 
         // 2. 确保总长度为偶数（头部+数据）
@@ -155,7 +155,7 @@ uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8
         }
 
         // 3. 构造临时缓冲区（伪头部 + TCP头部 + 数据）
-        uint16_t temp_len = 12 + tcp_total_len;  // 伪头部12字节 + TCP总长度
+        uint16_t temp_len = 12 + buf->len;  // 伪头部12字节 + TCP总长度 + 可能的1个padding
         uint8_t temp[temp_len];
 
         // 4. 填充伪头部
@@ -168,7 +168,7 @@ uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8
         memcpy(temp + 10, &tcp_len_net, 2);           // 填充到伪头部最后2字节
 
         // 5. 填充TCP头部和数据（头部已置0校验和，需确保校验和字段为0）
-        memcpy(temp + 12, buf->data, tcp_total_len);  // 拷贝头部（含置0的校验和）和数据
+        memcpy(temp + 12, buf->data, buf->len);  // 拷贝头部（含置0的校验和）和数据
 
         // 6. 计算校验和
         uint16_t jyh = checksum16((uint16_t *)temp, temp_len);

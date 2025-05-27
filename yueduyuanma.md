@@ -36,3 +36,13 @@ extern uint8_t net_if_ip[NET_IP_LEN];
 extern buf_t rxbuf, txbuf;  // 一个buf足够单线程使用 本协议栈创建一个接收和一个发送的缓冲区
 ```
 buf.h 给出通用数据包结构buf_t
+
+
+
+
+
+
+
+
+### 调试记录
+tcp调五六个小时，原来是校验和错了。

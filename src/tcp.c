@@ -204,7 +204,7 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
                 return;
             // TODO: 进行状态转移    // 经过调试，这里的ack从第三个报文开始影响 但是从第三个开始ack全是1.可能是进入了 ESTABLISHED 状态后出了问题？
             // tcp_conn->ack  =  tcp_conn->ack + bytes_in_flight(buf->len - tcp_hdr_sz, recv_flags);
-            tcp_conn->ack += 1;
+            // tcp_conn->ack += 1;
             tcp_conn->state = TCP_STATE_ESTABLISHED;
             
             break;
@@ -262,7 +262,7 @@ void tcp_in(buf_t *buf, uint8_t *src_ip) {
             (*handler)(tcp_conn, buf->data, buf->len, remote_ip, remote_port);          // 应用层在这边完成了操作，可能顺带回了，如果回了，会设置叫传输层不要回空ack
             
         } else {
-            buf_add_header(buf,  tcp_hdr_sz);
+            buf_add_header(buf,  20);
             icmp_unreachable(buf, src_ip, ICMP_CODE_PORT_UNREACH);  // 发送不可达
         }
     }
